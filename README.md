@@ -86,4 +86,4 @@ If you use ChEMBL data, please cite:
 > Mendez D, et al. ChEMBL: towards direct deposition of bioassay data. *Nucleic Acids Research*, 2019. https://doi.org/10.1093/nar/gky1075
 
 If you use this tool, please cite:
->Ballante F, et al. From Library to Landscape: Integrative Annotation Workflows for Compound Libraries in Drug Repurposing. Database, 2025. https://doi.org/10.1093/database/baaf081
+>Reinshagen J, et al. From Library to Landscape: Integrative Annotation Workflows for Compound Libraries in Drug Repurposing. Database, 2025. https://doi.org/10.1093/database/baaf081
