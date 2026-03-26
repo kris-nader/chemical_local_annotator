@@ -1,4 +1,4 @@
-# chembl-local-annotator
+# chemical-local-annotator
 
 Offline ChEMBL annotation pipeline for large compound libraries. Processes 700,000+ InChIKeys in **minutes** by querying a local ChEMBL SQLite database - compared to months using the public REST API.
 
