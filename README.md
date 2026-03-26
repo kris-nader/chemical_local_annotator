@@ -1,6 +1,6 @@
 # chembl-local-annotator
 
-Offline ChEMBL annotation pipeline for large compound libraries. Processes 700,000+ InChIKeys in **minutes** by querying a local ChEMBL SQLite database — compared to months using the public REST API.
+Offline ChEMBL annotation pipeline for large compound libraries. Processes 700,000+ InChIKeys in **minutes** by querying a local ChEMBL SQLite database - compared to months using the public REST API.
 
 ## Overview
 
@@ -84,3 +84,6 @@ The public ChEMBL and PubChem APIs enforce strict rate limits (5 requests/second
 If you use ChEMBL data, please cite:
 
 > Mendez D, et al. ChEMBL: towards direct deposition of bioassay data. *Nucleic Acids Research*, 2019. https://doi.org/10.1093/nar/gky1075
+
+If you use this tool, please cite:
+>Ballante F, et al. From Library to Landscape: Integrative Annotation Workflows for Compound Libraries in Drug Repurposing. Database, 2025. https://doi.org/10.1093/database/baaf081
