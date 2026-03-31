@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- data.js must be in same folder: sets window.DRUG_DATA -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPECS Drug-Target Network Explorer</title>
+  <meta name="description" content="Interactive drug-target network explorer for 16,000+ SPECS compounds annotated against the ChEMBL database." />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="vis-network.min.js"></script>
+  <!-- vis-network.min.css styles are injected by the JS -->
+
+  <style>
+    :root {
+      --bg: #0d0f17; --surface: #151824; --card: #1c2033; --border: #2a2f45;
+      --accent: #6366f1; --accent2: #06b6d4; --accent3: #f472b6;
+      --text: #e2e8f0; --muted: #64748b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+    /* Header */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 20px; display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+    .logo { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .logo-icon { width: 30px; height: 30px; background: linear-gradient(135deg, var(--accent), var(--accent2)); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+    h1 { font-size: 0.95rem; font-weight: 600; white-space: nowrap; }
+    .subtitle { font-size: 0.7rem; color: var(--muted); }
+    .search-wrap { flex: 1; max-width: 480px; position: relative; }
+    #search-input { width: 100%; padding: 8px 14px 8px 38px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; color: var(--text); font-size: 0.85rem; outline: none; font-family: inherit; transition: border-color 0.2s; }
+    #search-input:focus { border-color: var(--accent); }
+    .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 14px; pointer-events: none; }
+    #suggestions { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--card); border: 1px solid var(--border); border-radius: 10px; max-height: 280px; overflow-y: auto; z-index: 100; display: none; }
+    .sug-item { padding: 9px 14px; cursor: pointer; font-size: 0.82rem; }
+    .sug-item:hover, .sug-item.active { background: var(--accent); color: #fff; }
+    .sug-item:hover .sug-key, .sug-item.active .sug-key { color: rgba(255,255,255,0.7); }
+    .sug-key { font-size: 0.68rem; color: var(--muted); margin-top: 1px; }
+    .stats { display: flex; gap: 8px; flex-shrink: 0; }
+    .pill { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px; font-size: 0.7rem; white-space: nowrap; }
+    .pill span { color: var(--accent2); font-weight: 600; }
+
+    /* Layout */
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* Left panel tabs */
+    #sidebar { width: 310px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
+    .tabs { display: flex; border-bottom: 1px solid var(--border); }
+    .tab { flex: 1; padding: 9px 4px; font-size: 0.72rem; font-weight: 500; text-align: center; cursor: pointer; color: var(--muted); transition: color 0.15s; border-bottom: 2px solid transparent; }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab-panel { display: none; flex: 1; overflow-y: auto; padding: 8px; }
+    .tab-panel.active { display: block; }
+    .drug-header { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .drug-title { font-size: 0.85rem; font-weight: 600; margin-bottom: 4px; }
+    .drug-sub { font-size: 0.7rem; color: var(--muted); }
+    .drug-props { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .prop { background: var(--card); border-radius: 6px; padding: 7px 9px; }
+    .prop-label { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; margin-bottom: 2px; }
+    .prop-val { font-size: 0.78rem; font-weight: 500; }
+
+    /* Cards */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; margin-bottom: 6px; cursor: pointer; transition: border-color 0.15s; }
+    .card:hover { border-color: var(--accent); }
+    .card-title { font-size: 0.78rem; font-weight: 500; margin-bottom: 4px; }
+    .card-sub { font-size: 0.68rem; color: var(--muted); margin-bottom: 4px; }
+    .badges { display: flex; gap: 5px; flex-wrap: wrap; }
+    .badge { font-size: 0.62rem; padding: 2px 6px; border-radius: 4px; font-weight: 500; }
+    .bg-indigo { background: rgba(99,102,241,0.25); color: #a5b4fc; }
+    .bg-cyan   { background: rgba(6,182,212,0.2);  color: #67e8f9; }
+    .bg-green  { background: rgba(16,185,129,0.2); color: #6ee7b7; }
+    .bg-amber  { background: rgba(245,158,11,0.2); color: #fcd34d; }
+    .bg-pink   { background: rgba(244,114,182,0.2);color: #f9a8d4; }
+    .empty-state { text-align: center; color: var(--muted); padding: 32px 12px; font-size: 0.78rem; line-height: 1.7; }
+
+    /* Graph area */
+    #graph-wrap { flex: 1; position: relative; background: var(--bg); }
+    #network { width: 100%; height: 100%; }
+    #placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center; gap: 10px; }
+    .ph-icon { font-size: 48px; opacity: 0.12; }
+    .ph-title { font-size: 1rem; font-weight: 600; color: var(--muted); }
+    .ph-sub { font-size: 0.78rem; color: var(--muted); opacity: 0.6; max-width: 280px; }
+
+    /* Tooltip */
+    #tooltip { position: absolute; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; font-size: 0.76rem; pointer-events: none; display: none; z-index: 50; max-width: 260px; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+    #tooltip h3 { font-size: 0.83rem; margin-bottom: 6px; }
+    .tt-row { display: flex; justify-content: space-between; gap: 10px; margin-top: 3px; color: var(--muted); }
+    .tt-val { color: var(--text); font-weight: 500; }
+
+    /* Legend */
+    #legend { position: absolute; bottom: 14px; right: 14px; background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px; font-size: 0.7rem; }
+    .leg-title { font-weight: 600; margin-bottom: 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .leg-row { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    .leg-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+    .leg-note { margin-top: 8px; color: var(--muted); font-size: 0.62rem; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🧬</div>
+    <div><h1>SPECS Drug-Target Explorer</h1><div class="subtitle">ChEMBL-annotated · 16,110 compounds</div></div>
+  </div>
+  <div class="search-wrap">
+    <span class="search-icon">🔍</span>
+    <input id="search-input" type="text" placeholder="Search drug name, ChEMBL ID, or InChIKey…" autocomplete="off" />
+    <div id="suggestions"></div>
+  </div>
+  <div class="stats">
+    <div class="pill">Drugs: <span id="stat-drugs">—</span></div>
+    <div class="pill">Conf ≥ 8 · pChEMBL ≥ 6</div>
+  </div>
+</header>
+
+<div class="main">
+  <div id="sidebar">
+    <div id="drug-header" style="display:none">
+      <div class="drug-header">
+        <div class="drug-title" id="dh-name">—</div>
+        <div class="drug-sub" id="dh-key">—</div>
+      </div>
+      <div class="drug-props">
+        <div class="prop"><div class="prop-label">Max Phase</div><div class="prop-val" id="dh-phase">—</div></div>
+        <div class="prop"><div class="prop-label">Formula</div><div class="prop-val" id="dh-formula">—</div></div>
+        <div class="prop"><div class="prop-label">Mol. Weight</div><div class="prop-val" id="dh-mwt">—</div></div>
+        <div class="prop"><div class="prop-label">Targets</div><div class="prop-val" id="dh-ntargets">—</div></div>
+      </div>
+    </div>
+    <div class="tabs" id="tabs" style="display:none">
+      <div class="tab active" data-tab="targets">Targets</div>
+      <div class="tab" data-tab="moa">MoA</div>
+      <div class="tab" data-tab="indications">Indications</div>
+    </div>
+    <div class="tab-panel active" id="tab-targets">
+      <div class="empty-state">🔎 Search for a compound above to explore its annotated targets.</div>
+    </div>
+    <div class="tab-panel" id="tab-moa"></div>
+    <div class="tab-panel" id="tab-indications"></div>
+  </div>
+
+  <div id="graph-wrap">
+    <div id="network"></div>
+    <div id="placeholder">
+      <div class="ph-icon">⬡</div>
+      <div class="ph-title">No compound selected</div>
+      <div class="ph-sub">Search and select a drug to visualize its target network</div>
+    </div>
+    <div id="tooltip"></div>
+    <div id="legend">
+      <div class="leg-title">Assay Type</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#6366f1"></div> Binding (B)</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#06b6d4"></div> Functional (F)</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#94a3b8"></div> Other / Unknown</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#ec4899; border-radius: 2px; width: 10px; height: 10px;"></div> Human Orthologue</div>
+      <div class="leg-note">Node size = pChEMBL · Edge width = confidence</div>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+  let DATA = { drugs: {}, search: [] };
+  let network = null;
+
+  document.addEventListener('DOMContentLoaded', () => {
+  // ── Load data from inline script tag (avoids fetch/CORS issues) ──
+  if (window.DRUG_DATA) {
+    DATA = window.DRUG_DATA;
+    document.getElementById('stat-drugs').textContent = Object.keys(DATA.drugs).length.toLocaleString();
+  } else {
+    document.querySelector('.ph-sub').textContent = 'Could not load data.js — make sure it is in the same folder as index.html.';
+  }
+
+  // ── Tabs ──
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ── Search ──
+  const searchInput = document.getElementById('search-input');
+  const sugBox = document.getElementById('suggestions');
+  let activeSug = -1;
+
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim().toLowerCase();
+    sugBox.innerHTML = ''; activeSug = -1;
+    if (q.length < 2) { sugBox.style.display = 'none'; return; }
+    // Search by ChEMBL ID (sub field), drug name, or InChIKey
+    const matches = DATA.search.filter(s =>
+      (s.sub||'').toLowerCase().includes(q) || s.label.toLowerCase().includes(q) || s.key.toLowerCase().includes(q)
+    ).slice(0, 18);
+    if (!matches.length) { sugBox.style.display = 'none'; return; }
+    matches.forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'sug-item';
+      div.innerHTML = `<div>${m.sub || m.label}</div><div class="sug-key">${m.label !== m.sub ? m.label + ' · ' : ''}${m.key}</div>`;
+      div.addEventListener('mousedown', (e) => { e.preventDefault(); selectDrug(m.key); });
+      sugBox.appendChild(div);
+    });
+    sugBox.style.display = 'block';
+  });
+
+  searchInput.addEventListener('keydown', e => {
+    const items = sugBox.querySelectorAll('.sug-item');
+    if (e.key === 'ArrowDown') { activeSug = Math.min(activeSug+1, items.length-1); hlSug(items); }
+    else if (e.key === 'ArrowUp') { activeSug = Math.max(activeSug-1, 0); hlSug(items); }
+    else if (e.key === 'Enter' && activeSug >= 0) items[activeSug].click();
+    else if (e.key === 'Escape') sugBox.style.display = 'none';
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) sugBox.style.display = 'none'; });
+  function hlSug(items) { items.forEach((el,i) => el.classList.toggle('active', i===activeSug)); if(activeSug>=0) items[activeSug].scrollIntoView({block:'nearest'}); }
+
+  // ── Assay type → color (using real ChEMBL assay_type codes) ──
+  function assayColor(t) {
+    switch((t||'').toUpperCase().trim()) {
+      case 'B': return '#6366f1';  // Binding
+      case 'F': return '#06b6d4';  // Functional
+      case 'A': return '#10b981';  // ADMET
+      case 'P': return '#f59e0b';  // Physicochemical
+      default:  return '#94a3b8';
+    }
+  }
+  function assayLabel(t) {
+    switch((t||'').toUpperCase().trim()) {
+      case 'B': return 'Binding'; case 'F': return 'Functional';
+      case 'A': return 'ADMET';   case 'P': return 'Physicochemical';
+      default:  return t || 'Unknown';
+    }
+  }
+
+  // ── Select drug ──
+  function selectDrug(key) {
+    sugBox.style.display = 'none';
+    const drug = DATA.drugs[key];
+    if (!drug) return;
+    searchInput.value = drug.name;
+    document.getElementById('placeholder').style.display = 'none';
+
+    // Drug header
+    document.getElementById('drug-header').style.display = 'block';
+    document.getElementById('tabs').style.display = 'flex';
+    document.getElementById('dh-name').textContent = drug.pref_name || drug.name;
+    document.getElementById('dh-key').textContent  = drug.key;
+    document.getElementById('dh-phase').textContent   = drug.max_phase || '—';
+    document.getElementById('dh-formula').textContent = drug.formula   || '—';
+    document.getElementById('dh-mwt').textContent     = drug.mwt ? drug.mwt.toFixed(1) : '—';
+    document.getElementById('dh-ntargets').textContent = drug.targets.length;
+
+    // Targets tab
+    const targetPanel = document.getElementById('tab-targets');
+    targetPanel.innerHTML = '';
+    const sorted = [...drug.targets].sort((a,b) => b.pchembl - a.pchembl);
+    sorted.forEach(t => {
+      const el = document.createElement('div');
+      el.className = 'card';
+      el.innerHTML = `
+        <div class="card-title">${t.name}</div>
+        ${t.uniprot ? `<div class="card-sub">UniProt: ${t.uniprot}</div>` : ''}
+        <div class="badges">
+          <span class="badge bg-indigo">pChEMBL ${t.pchembl}</span>
+          <span class="badge bg-cyan">${assayLabel(t.assay_type)}</span>
+          <span class="badge bg-green">Conf ${t.confidence}</span>
+          ${t.year ? `<span class="badge bg-amber">${t.year}</span>` : ''}
+        </div>`;
+      el.addEventListener('click', () => { if(network) network.selectNodes([`t_${t.id}`]); });
+      targetPanel.appendChild(el);
+    });
+
+    // MoA tab
+    const moaPanel = document.getElementById('tab-moa');
+    moaPanel.innerHTML = '';
+    if (!drug.moa || !drug.moa.length) {
+      moaPanel.innerHTML = '<div class="empty-state">No MoA data available for this compound.</div>';
+    } else {
+      drug.moa.forEach(m => {
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.innerHTML = `<div class="card-title">${m.moa || 'Unknown mechanism'}</div>
+          <div class="badges"><span class="badge bg-pink">${m.action || '—'}</span>
+          ${m.target ? `<span class="badge bg-cyan">${m.target}</span>` : ''}</div>`;
+        moaPanel.appendChild(el);
+      });
+    }
+
+    // Indications tab
+    const indPanel = document.getElementById('tab-indications');
+    indPanel.innerHTML = '';
+    if (!drug.indications || !drug.indications.length) {
+      indPanel.innerHTML = '<div class="empty-state">No indication data available for this compound.</div>';
+    } else {
+      drug.indications.forEach(i => {
+        const el = document.createElement('div');
+        el.className = 'card';
+        el.innerHTML = `<div class="card-title">${i.disease}</div>
+          ${i.efo ? `<div class="card-sub">${i.efo}</div>` : ''}
+          ${i.phase !== null ? `<div class="badges"><span class="badge bg-amber">Phase ${i.phase}</span></div>` : ''}`;
+        indPanel.appendChild(el);
+      });
+    }
+
+    const drugLabel = (drug.pref_name || drug.name);
+    const nodes = [{
+      id: `d_${key}`,
+      label: drugLabel.length > 20 ? drugLabel.slice(0, 18) + '…' : drugLabel,
+      shape: 'image',
+      image: 'drug.svg',
+      size: 36,
+      font: { color: '#ffffff', size: 12, bold: true, face: 'Inter', vadjust: 10 },
+      borderWidth: 0,
+      shapeProperties: { useBorderWithImage: false, interpolation: false }
+    }];
+    const edges = [];
+    const nodeSet = new Set();
+
+    sorted.forEach(t => {
+      const nid = `t_${t.id}`;
+      const col = assayColor(t.assay_type);
+      if (!nodeSet.has(nid)) {
+        nodeSet.add(nid);
+        nodes.push({
+          id: nid,
+          label: t.name.length > 24 ? t.name.slice(0,22)+'…' : t.name,
+          shape: 'dot',
+          size: Math.max(8, Math.min(20, t.pchembl * 1.6)),
+          color: { background: col+'44', border: col, highlight: { background: col+'88', border: col } },
+          font: { color: '#e2e8f0', size: 10, face: 'Inter' },
+          title: `<b>${t.name}</b><br>pChEMBL: ${t.pchembl}<br>Assay: ${assayLabel(t.assay_type)}<br>${t.uniprot ? 'UniProt: '+t.uniprot : ''}`
+        });
+      }
+      edges.push({
+        from: `d_${key}`, to: nid,
+        width: Math.max(1, Math.min(5, (t.confidence - 7) * 1.5)),
+        color: { color: '#2a2f45', highlight: '#6366f1', opacity: 0.7 },
+        smooth: { type: 'dynamic' }
+      });
+    });
+
+    // ── Orthologues ──
+    if (drug.orthologues) {
+      drug.orthologues.forEach(o => {
+        const fromId = `t_${o.from}`;
+        const toId   = o.to; // e.g. "CHEMBL339_human"
+        if (!nodeSet.has(fromId)) return; // Should already be there
+        
+        if (!nodeSet.has(toId)) {
+          nodeSet.add(toId);
+          const orthoTitle = `<b>Human Orthologue: ${o.name}</b><br>` +
+                             `Organism: ${o.organism}<br>` +
+                             (o.uniprot ? `UniProt: ${o.uniprot}<br>` : '') +
+                             (o.gene ? `Gene: ${o.gene}<br>` : '') +
+                             (o.similarity ? `Similarity: ${o.similarity}<br>` : '');
+          nodes.push({
+            id: toId,
+            label: o.name.length > 24 ? o.name.slice(0,22)+'…' : o.name,
+            shape: 'diamond',
+            size: 15,
+            color: { background: '#ec489944', border: '#ec4899', highlight: { background: '#ec489988', border: '#ec4899' } },
+            font: { color: '#fbcfe8', size: 10, face: 'Inter' },
+            title: orthoTitle
+          });
+        }
+        
+        edges.push({
+          from: fromId, to: toId,
+          width: 2,
+          dashes: true,
+          arrows: 'to',
+          color: { color: '#ec4899', opacity: 0.6 },
+          smooth: { type: 'curvedCCW', roundness: 0.2 }
+        });
+      });
+    }
+
+    const container = document.getElementById('network');
+    if (network) network.destroy();
+
+    network = new vis.Network(container,
+      { nodes: new vis.DataSet(nodes), edges: new vis.DataSet(edges) },
+      {
+        physics: {
+          solver: 'forceAtlas2Based',
+          forceAtlas2Based: { gravitationalConstant: -60, centralGravity: 0.005, springLength: 160, springConstant: 0.06, damping: 0.4 },
+          stabilization: { enabled: true, iterations: 200, updateInterval: 25 }
+        },
+        interaction: { hover: true, tooltipDelay: 80, navigationButtons: true, keyboard: false },
+        layout: { improvedLayout: nodes.length < 80 }
+      }
+    );
+
+    // Tooltip on hover
+    const tooltip = document.getElementById('tooltip');
+    network.on('hoverNode', params => {
+      // Find primary target
+      let t = sorted.find(t => `t_${t.id}` === params.node);
+      
+      if (t) {
+        tooltip.innerHTML = `
+          <h3>${t.name}</h3>
+          <div class="tt-row"><span>pChEMBL</span><span class="tt-val">${t.pchembl}</span></div>
+          <div class="tt-row"><span>Assay type</span><span class="tt-val">${assayLabel(t.assay_type)}</span></div>
+          <div class="tt-row"><span>Confidence</span><span class="tt-val">${t.confidence}</span></div>
+          <div class="tt-row"><span>Organism</span><span class="tt-val">${t.organism || '—'}</span></div>
+          ${t.uniprot ? `<div class="tt-row"><span>UniProt</span><span class="tt-val">${t.uniprot}</span></div>` : ''}
+          ${t.year ? `<div class="tt-row"><span>Year</span><span class="tt-val">${t.year}</span></div>` : ''}
+          <div class="tt-row"><span>Assay</span><span class="tt-val">${t.assay}</span></div>`;
+      } else if (drug.orthologues) {
+        // Find orthologue
+        const o = drug.orthologues.find(o => o.to === params.node);
+        if (o) {
+          tooltip.innerHTML = `
+            <h3>Human Orthologue: ${o.name}</h3>
+            <div class="tt-row"><span>Organism</span><span class="tt-val">${o.organism}</span></div>
+            ${o.uniprot ? `<div class="tt-row"><span>UniProt</span><span class="tt-val">${o.uniprot}</span></div>` : ''}
+            ${o.gene ? `<div class="tt-row"><span>Gene</span><span class="tt-val">${o.gene}</span></div>` : ''}
+            ${o.similarity ? `<div class="tt-row"><span>Similarity</span><span class="tt-val">${o.similarity}</span></div>` : ''}`;
+        } else {
+          tooltip.style.display = 'none'; return;
+        }
+      } else {
+        tooltip.style.display = 'none'; return;
+      }
+
+      const rect = document.getElementById('graph-wrap').getBoundingClientRect();
+      tooltip.style.display = 'block';
+      tooltip.style.left = Math.min(params.event.clientX - rect.left + 14, rect.width - 270) + 'px';
+      tooltip.style.top  = Math.max(params.event.clientY - rect.top - 20, 4) + 'px';
+    });
+    network.on('blurNode', () => tooltip.style.display = 'none');
+  }
+  });
+</script>
+</body>
+</html>
